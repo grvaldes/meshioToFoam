@@ -3,7 +3,7 @@ import meshio
 
 from openfoam.folderStructure import *
 from writers.fileWriter import *
-#from cli.polyMesh import *
+from cli.polyMesh import *
 
 # Reading arguments
 file_in = sys.argv[1]

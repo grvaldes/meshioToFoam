@@ -75,86 +75,114 @@ topological_dimension = {
 }
 
 
-class polyBlock:
-    def __init__(self ,cell_type, data):
-        self.type = cell_type
-        self.data = np.asarray(data)
-        self.dim = topological_dimension[cell_type]
-
-        if topological_dimension[cell_type] == 1:
-            self.elem = "lines"
-        if topological_dimension[cell_type] == 2:
-            self.elem = "faces"
-        if topological_dimension[cell_type] == 3:
-            self.elem = "cells"
-
-    def __repr__(self):
-        items = [
-            "OpenFOAM polyBlock",
-            f"type: {self.type}",
-            f"num {self.elem}: {len(self.data)}"
-        ]
-        return "<" + ", ".join(items) + ">"
-
-    def __len__(self):
-        return len(self.data)
-
-
 class polyMesh:
 
     def __init__(self, mesh, fileType):
         self.origin = fileType
         self.points = mesh.points
+        self.boundFaces = self.getCellsFromMeshio(mesh, 2)
         self.cells = self.getCellsFromMeshio(mesh, 3)
-        self.faces = self.getCellsFromMeshio(mesh, 2)
         self.pointZones = self.getZonesFromMeshio(mesh, 1)
         self.faceZones = self.getZonesFromMeshio(mesh, 2)
         self.cellZones = self.getZonesFromMeshio(mesh, 3)
 
+        self.faceCenter = {}
+        self.cellCenter = {}
+
+        self.getFacesCenter()
+        self.getCellsCenters()
+
+        self.faceArea = {}
+        self.cellVolume = {}
+
+        self.neighbour = {}
+        self.owner = {}
+        self.boundary = {}
+        self.innerFaces = {}
+
         self.createInternalFaces()
 
-        self.neighbour = 0
-        self.owner = 0
-        self.boundary = 0
 
-        self.faceArea = 0
-        self.faceCenter = 0
-        self.cellVolume = 0
-        self.cellCenter = 0
 
     
-    def getCellsFromMeshio(mesh, ndim):
+    def getCellsFromMeshio(self, mesh, ndim):
         cells = []
 
         for cellI in mesh.cells:
             if ndim == topological_dimension[cellI.type]:
-                cells.append(mesh.data) 
+                dict = {}
+                dict["type"] = cellI.type
+                dict["nPts"] = cellI.data.shape[-1]
+                dict["points"] = cellI.data
+
+                cells.append(dict) 
 
         return cells
 
     
-    def getZonesFromMeshio(mesh, ndim):
+    def getZonesFromMeshio(self, mesh, ndim):
         zones = {}
 
         if ndim == 1:
             if mesh.point_data == {}:
-                for key, zoneI in mesh.point_sets:
+                for key, zoneI in mesh.point_sets.items():
                     zones[key] = zoneI
             elif mesh.point_sets == {}:
-                for key, zoneI in mesh.point_data:
+                for key, zoneI in mesh.point_data.items():
                     zones[key] = zoneI
-        elif ndim == 2:
-            if mesh.cell_data == {}:
-                for key, zoneI in mesh.cell_sets:
-                    zones[key] = zoneI
-            elif mesh.cell_sets == {}:
-                for key, zoneI in mesh.cell_data:
-                    zones[key] = zoneI
+            else:
+                Warning("No point sets in the mesh.")
+        
+        elif ndim > 1:
+            if self.origin == "msh":
+                if ndim == 2:
+                    zones_array = mesh.cell_data["gmsh:physical"][0]
+                elif ndim == 3:
+                    zones_array = mesh.cell_data["gmsh:physical"][1]
+
+                for key, value in mesh.field_data.items():
+                    if ndim == value[-1]:
+                        zones[key] = np.nonzero(zones_array == value[0])[0]
+
+            elif self.origin == "inp":
+                for key, value in mesh.cell_sets_dict.items():
+                    if key != "All":
+                        for inKey, inValue in value.items():
+                            if ndim == topological_dimension[inKey]:
+                                zones[key + "_" + inKey] = inValue
 
         return zones
         
-    def createInternalFaces():
+
+    def getFacesCenter(self):
+        if self.faceCenter == {}:
+            for listI in self.boundFaces:
+                x = np.mean(self.points[listI["points"],0], 1)
+                y = np.mean(self.points[listI["points"],1], 1)
+                z = np.mean(self.points[listI["points"],2], 1)
+
+                self.faceCenter[listI["type"]] = np.array(np.vstack((x, y, z))).T
+
+        try:
+            for listI in self.innerFaces:
+                x = np.mean(self.points[listI["points"],0], 1)
+                y = np.mean(self.points[listI["points"],1], 1)
+                z = np.mean(self.points[listI["points"],2], 1)
+
+                self.faceCenter[listI["type"]] = np.array(np.vstack((x, y, z))).T
+        except:
+            print("Inner faces not defined yet.")
+
+    def getCellsCenters(self):
+        for listI in self.cells:
+            x = np.mean(self.points[listI["points"],0], 1)
+            y = np.mean(self.points[listI["points"],1], 1)
+            z = np.mean(self.points[listI["points"],2], 1)
+
+            self.cellCenter[listI["type"]] = np.array(np.vstack((x, y, z))).T
+
+    def createInternalFaces(self):
         pass
 
-    def checkFaceOrientations():
+    def checkFaceOrientations(self):
         pass
