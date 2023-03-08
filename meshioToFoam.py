@@ -1,9 +1,9 @@
 import sys
-import meshio
 
+import meshiofoam as meshio
 from openfoam.folderStructure import *
 from writers.fileWriter import *
-from cli.polyMesh import *
+from openfoam.polyMesh import *
 
 # Reading arguments
 file_in = sys.argv[1]
