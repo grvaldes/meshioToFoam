@@ -177,6 +177,22 @@ def read_buffer(f):
                         cell_sets[name].append(cell_sets_element[set_name])
                     else:
                         raise ReadError(f"Unknown cell set '{set_name}'")
+        elif keyword == "SURFACE":
+            params_map = get_param_map(line, required_keys=["TYPE"])
+            surf_faces, line = _read_surfaces(f, params_map, cells, cell_ids)
+            name = params_map["NAME"]
+
+            cell_num = len(cells)
+
+            for k, v in surf_faces.items():
+                cells.append(CellBlock(k, v))
+
+            {k: v.append(np.arange(cells[-1].data.shape[0], dtype="int32")) for k, v in cell_sets.items() if k == "All"}
+            {k: v.append(np.array([], dtype="int32")) for k, v in cell_sets.items() if k != "All"}
+
+            cell_sets[name] = [np.array([], dtype="int32") for i in range(cell_num)]
+            cell_sets[name].append(np.arange(cells[-1].data.shape[0], dtype="int32"))
+
         elif keyword == "INCLUDE":
             # Splitting line to get external input file path (example: *INCLUDE,INPUT=wInclude_bulk.inp)
             ext_input_file = pathlib.Path(line.split("=")[-1].strip())
@@ -283,6 +299,55 @@ def _read_cells(f, params_map, point_ids):
 
     return cell_type, cells, cell_ids, cell_sets, line
 
+def _read_surfaces(f, params_map, cells, cell_ids):
+    surf_faces = {"quad" : [], "triangle" : []}
+
+    while True:
+        line = f.readline()
+        if not line or line.startswith("*"):
+            break
+        line = line.strip()
+        if line == "":
+            continue
+
+        line = line.strip().strip(",").replace(" ","").split(",")
+
+        if params_map["TYPE"] == "Element":
+            ind = 0
+            
+            for dicti in cell_ids:
+                if int(line[0]) in dicti.keys():
+                    elem = dicti[int(line[0])]
+                    
+                    if cells[ind].type == "hexahedron":
+                        if line[1] == "S1":
+                            surf_faces["quad"] += [cells[ind].data[elem,[0,1,2,3]]]
+                        elif line[1] == "S2":
+                            surf_faces["quad"] += [cells[ind].data[elem,[4,7,6,5]]]
+                        elif line[1] == "S3":
+                            surf_faces["quad"] += [cells[ind].data[elem,[0,4,5,1]]]
+                        elif line[1] == "S4":
+                            surf_faces["quad"] += [cells[ind].data[elem,[1,5,6,2]]]
+                        elif line[1] == "S5":
+                            surf_faces["quad"] += [cells[ind].data[elem,[2,6,7,3]]]
+                        elif line[1] == "S6":
+                            surf_faces["quad"] += [cells[ind].data[elem,[3,7,4,0]]]
+                    elif cells[ind].type == "wedge":
+                        if line[1] == "S1":
+                            surf_faces["triangle"] += [cells[ind].data[elem,[0,1,2]]]
+                        elif line[1] == "S2":
+                            surf_faces["triangle"] += [cells[ind].data[elem,[3,5,4]]]
+                        elif line[1] == "S3":
+                            surf_faces["quad"] += [cells[ind].data[elem,[0,3,4,1]]]
+                        elif line[1] == "S4":
+                            surf_faces["quad"] += [cells[ind].data[elem,[1,4,5,2]]]
+                        elif line[1] == "S5":
+                            surf_faces["quad"] += [cells[ind].data[elem,[2,5,3,0]]]
+                ind += 1
+
+    surf_faces = {k: v for k, v in surf_faces.items() if v}
+
+    return surf_faces, line
 
 def merge(
     mesh, points, cells, point_data, cell_data, field_data, point_sets, cell_sets
