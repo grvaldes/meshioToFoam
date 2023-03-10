@@ -1,79 +1,5 @@
 import numpy as np
-
-topological_dimension = {
-    "line": 1,
-    "polygon": 2,
-    "triangle": 2,
-    "quad": 2,
-    "tetra": 3,
-    "hexahedron": 3,
-    "wedge": 3,
-    "pyramid": 3,
-    "line3": 1,
-    "triangle6": 2,
-    "quad9": 2,
-    "tetra10": 3,
-    "hexahedron27": 3,
-    "wedge18": 3,
-    "pyramid14": 3,
-    "vertex": 0,
-    "quad8": 2,
-    "hexahedron20": 3,
-    "triangle10": 2,
-    "triangle15": 2,
-    "triangle21": 2,
-    "line4": 1,
-    "line5": 1,
-    "line6": 1,
-    "tetra20": 3,
-    "tetra35": 3,
-    "tetra56": 3,
-    "quad16": 2,
-    "quad25": 2,
-    "quad36": 2,
-    "triangle28": 2,
-    "triangle36": 2,
-    "triangle45": 2,
-    "triangle55": 2,
-    "triangle66": 2,
-    "quad49": 2,
-    "quad64": 2,
-    "quad81": 2,
-    "quad100": 2,
-    "quad121": 2,
-    "line7": 1,
-    "line8": 1,
-    "line9": 1,
-    "line10": 1,
-    "line11": 1,
-    "tetra84": 3,
-    "tetra120": 3,
-    "tetra165": 3,
-    "tetra220": 3,
-    "tetra286": 3,
-    "wedge40": 3,
-    "wedge75": 3,
-    "hexahedron64": 3,
-    "hexahedron125": 3,
-    "hexahedron216": 3,
-    "hexahedron343": 3,
-    "hexahedron512": 3,
-    "hexahedron729": 3,
-    "hexahedron1000": 3,
-    "wedge126": 3,
-    "wedge196": 3,
-    "wedge288": 3,
-    "wedge405": 3,
-    "wedge550": 3,
-    "VTK_LAGRANGE_CURVE": 1,
-    "VTK_LAGRANGE_TRIANGLE": 2,
-    "VTK_LAGRANGE_QUADRILATERAL": 2,
-    "VTK_LAGRANGE_TETRAHEDRON": 3,
-    "VTK_LAGRANGE_HEXAHEDRON": 3,
-    "VTK_LAGRANGE_WEDGE": 3,
-    "VTK_LAGRANGE_PYRAMID": 3,
-}
-
+from .common import *
 
 class polyMesh:
 
@@ -86,11 +12,13 @@ class polyMesh:
         self.faceZones = self.getZonesFromMeshio(mesh, 2)
         self.cellZones = self.getZonesFromMeshio(mesh, 3)
 
+        self.cleanPoints()
+
         self.faceCenter = {}
         self.cellCenter = {}
 
         self.getFacesCenter()
-        self.getCellsCenters()
+        self.getCellsCenter()
 
         self.faceArea = {}
         self.cellVolume = {}
@@ -110,11 +38,11 @@ class polyMesh:
 
         for cellI in mesh.cells:
             if ndim == topological_dimension[cellI.type]:
-                dict = {}
-                dict["type"] = cellI.type
-                dict["nPts"] = cellI.data.shape[-1]
-                dict["points"] = cellI.data
-
+                dict = {
+                    "type": cellI.type,
+                    "nPts": cellI.data.shape[-1],
+                    "points": cellI.data
+                }
                 cells.append(dict) 
 
         return cells
@@ -173,7 +101,8 @@ class polyMesh:
         except:
             print("Inner faces not defined yet.")
 
-    def getCellsCenters(self):
+
+    def getCellsCenter(self):
         for listI in self.cells:
             x = np.mean(self.points[listI["points"],0], 1)
             y = np.mean(self.points[listI["points"],1], 1)
@@ -181,8 +110,58 @@ class polyMesh:
 
             self.cellCenter[listI["type"]] = np.array(np.vstack((x, y, z))).T
 
+
+    def cleanPoints(self):
+        nodes = np.ones(len(self.points), dtype=bool)
+
+        for k, v in self.pointZones.items():
+            if "Constraints" in k:
+                nodes[v[0]] = False
+
+        self.pointZones = {k: v for k, v in self.pointZones.items() if "Constraints" not in k}
+        self.points = self.points[nodes,:]
+
+
+
     def createInternalFaces(self):
-        pass
+        cellFaces = self.assignCellFaces()
+        allFaces = []
+
+        count = 0
+
+        for kOut, vOut in cellFaces.items():
+            for _, vIn in vOut.items():
+                allFaces.append([count, int(kOut), vIn])
+                count += 1
+
+        return 0
+
+    
+    def assignCellFaces(self):
+        cellFace = {}
+        ind = 0
+
+        for elType in self.cells:
+            if elType["type"] == "hexahedron":
+                of_elem = of_hex
+            elif elType["type"] == "tetra":
+                of_elem = of_tet
+            elif elType["type"] == "wedge":
+                of_elem = of_psm
+            elif elType["type"] == "pyramid":
+                of_elem = of_pyr
+
+            for elem in elType["points"]:
+                cellFace[ind] = {}
+            
+                for k, v in of_elem.items():
+                    cellFace[ind][k] = elem[v]
+                
+                ind += 1
+
+        return cellFace
+
+
 
     def checkFaceOrientations(self):
         pass

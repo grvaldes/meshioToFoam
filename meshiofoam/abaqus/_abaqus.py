@@ -121,6 +121,8 @@ def read_buffer(f):
     point_data = {}
     point_ids = None
 
+    first_node = True
+
     line = f.readline()
     while True:
         if not line:  # EOF
@@ -133,7 +135,15 @@ def read_buffer(f):
 
         keyword = line.partition(",")[0].strip().replace("*", "").upper()
         if keyword == "NODE":
-            points, point_ids, line = _read_nodes(f)
+            if first_node:
+                first_node = False
+                points, point_ids, line = _read_nodes(f)
+            else:
+                tmp_points, tmp_point_ids, line = _read_nodes(f)
+                points = np.vstack((points, tmp_points))
+                for k, _ in tmp_point_ids.items():
+                    tmp_point_ids[k] = int(k) - 1
+                point_ids.update(tmp_point_ids)
         elif keyword == "ELEMENT":
             if point_ids is None:
                 raise ReadError("Expected NODE before ELEMENT")
@@ -187,8 +197,8 @@ def read_buffer(f):
             for k, v in surf_faces.items():
                 cells.append(CellBlock(k, v))
 
-            {k: v.append(np.arange(cells[-1].data.shape[0], dtype="int32")) for k, v in cell_sets.items() if k == "All"}
-            {k: v.append(np.array([], dtype="int32")) for k, v in cell_sets.items() if k != "All"}
+            {k: v.append(np.arange(cells[-1].data.shape[0], dtype="int32")) for k, v in cell_sets.items() if k == "All" or "AllElements"}
+            {k: v.append(np.array([], dtype="int32")) for k, v in cell_sets.items() if k != "All" or "AllElements"}
 
             cell_sets[name] = [np.array([], dtype="int32") for i in range(cell_num)]
             cell_sets[name].append(np.arange(cells[-1].data.shape[0], dtype="int32"))
