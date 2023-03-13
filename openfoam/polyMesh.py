@@ -4,6 +4,8 @@ from .common import *
 class polyMesh:
 
     def __init__(self, mesh, fileType):
+        # self.owner WILL NOT INCLUDE BOUNDARIES, THEY WILL ONLY BE WRITTEN
+
         self.origin = fileType
         self.points = mesh.points
         self.boundFaces = self.getCellsFromMeshio(mesh, 2)
@@ -13,23 +15,21 @@ class polyMesh:
         self.cellZones = self.getZonesFromMeshio(mesh, 3)
 
         self.cleanPoints()
+        self.generateFaceZones()
+        self.createAllFaces()
 
-        self.faceCenter = {}
-        self.cellCenter = {}
 
-        self.getFacesCenter()
-        self.getCellsCenter()
+        # self.faceCenter = {}
+        # self.cellCenter = {}
 
-        self.faceArea = {}
-        self.cellVolume = {}
+        # self.getFacesCenter()
+        # self.getCellsCenter()
 
-        self.neighbour = {}
-        self.owner = {}
-        self.boundary = {}
-        self.innerFaces = {}
+        # self.faceArea = {}
+        # self.cellVolume = {}
 
-        self.createInternalFaces()
-
+        # self.getFacesArea()
+        # self.getCellsVolume()
 
 
     
@@ -103,6 +103,8 @@ class polyMesh:
 
 
     def getCellsCenter(self):
+        self.cellCenter = {}
+
         for listI in self.cells:
             x = np.mean(self.points[listI["points"],0], 1)
             y = np.mean(self.points[listI["points"],1], 1)
@@ -123,18 +125,88 @@ class polyMesh:
 
 
 
-    def createInternalFaces(self):
+    def createAllFaces(self):
         cellFaces = self.assignCellFaces()
-        allFaces = []
+        self.innerFaces = {}
+        self.boundary = {}
+        bnd_grp = {}
 
+        face_ind = []
+        face_arr = []
+        bound = []
+        inner = []
+        neigh = []
+        owner = []
+
+        shcount = 0
         count = 0
 
-        for kOut, vOut in cellFaces.items():
-            for _, vIn in vOut.items():
-                allFaces.append([count, int(kOut), vIn])
-                count += 1
+        for geom, elems in cellFaces.items():
+            face_ind.append(np.zeros(shape=(len(elems)*topological_faces[geom]), dtype="int32"))
+            face_arr.append(-np.ones(shape=(len(elems)*topological_faces[geom], nodes_per_face[geom]), dtype="int32"))
+            bound.append(np.zeros(shape=(len(elems)*topological_faces[geom]), dtype="int32"))
+            inner.append(np.zeros(shape=(len(elems)*topological_faces[geom]), dtype="int32"))
+            neigh.append(np.zeros(shape=(len(elems)*topological_faces[geom]), dtype="int32"))
+            owner.append(np.zeros(shape=(len(elems)*topological_faces[geom]), dtype="int32"))
 
-        return 0
+            for ind, faces in elems.items():
+                for _, points in faces.items():
+                    face_ind[shcount][count] = int(ind)
+                    face_arr[shcount][count,:len(points)] = points
+                    count += 1
+
+            shcount += 1
+
+        tot_cl = [0]
+        tot_in = [0]
+
+        for i in range(len(face_arr)):
+            mask = np.zeros(shape=(face_ind[i].size), dtype="int32")
+            node = np.arange(face_ind[i].size, dtype="int32")
+            _, ind, inv, cnt = np.unique(np.sort(face_arr[i], axis=1), axis=0, return_index=True, return_inverse=True, return_counts=True)
+            
+            for index in range(len(inv)):
+                pair = np.nonzero(inv == inv[index])
+
+                if pair[0].size == 2:
+                    owner[i][index] = face_ind[i][pair[0][0]]
+                    neigh[i][index] = face_ind[i][pair[0][1]]
+
+
+            mask[ind] = cnt
+            bound[i] = node[np.nonzero(mask == 1)]                        # index of faces we will take as boundaries (no repeated)
+            inner[i] = node[np.nonzero(mask == 2)] + tot_in[i]            # index of faces we will take as inner (no repeated)
+            owner[i] = owner[i][node[np.nonzero(mask == 2)]] + tot_cl[i]  # owner of inner faces
+            neigh[i] = neigh[i][node[np.nonzero(mask == 2)]] + tot_cl[i]  # neighbour of each inner face
+
+            self.innerFaces[face_arr[i].shape[1]] = face_arr[i][inner[i],:]
+
+            # TODO: maybe change for a simple sum
+            tot_cl.append(np.max(face_ind[i]) + 1)
+            tot_in.append(inner[i].size)
+
+            for k in self.faceZones.keys():
+                bnd_grp[k + "_" + str(face_arr[i].shape[1])] = np.array([], dtype="int32")    
+
+            for nod in bound[i]:
+                curr_face = face_arr[i][nod,:]
+
+                for k in self.faceZones.keys():
+                    key = k + "_" + str(face_arr[i].shape[1])
+                    check = np.intersect1d(curr_face, self.faceZones[k])
+
+                    if check.size == curr_face.size:
+                        bnd_grp[key] = np.hstack((bnd_grp[key], nod))
+
+            for k in self.faceZones.keys():
+                key = k + "_" + str(face_arr[i].shape[1])
+                self.boundary[key] = face_arr[i][bnd_grp[key],:]
+
+        for k in sorted(self.boundary.keys()):
+            owner.append(bnd_grp[k])
+
+        self.neighbour = np.hstack(tuple(neigh))
+        self.owner = np.hstack(tuple(owner))
 
     
     def assignCellFaces(self):
@@ -151,17 +223,46 @@ class polyMesh:
             elif elType["type"] == "pyramid":
                 of_elem = of_pyr
 
+            elFace = {}
+
             for elem in elType["points"]:
-                cellFace[ind] = {}
+                elFace[ind] = {}
             
                 for k, v in of_elem.items():
-                    cellFace[ind][k] = elem[v]
-                
+                    elFace[ind][k] = elem[v]
+
                 ind += 1
+
+            cellFace[elType["type"]] = elFace
 
         return cellFace
 
 
+    def generateFaceZones(self):
+        # FOR NOW THIS IS ONLY VALID FOR THE TEXGEN INP FILES.
+        # I NEED TO MAKE IT GENERIC.
+
+        texgen_to_openfoam = {
+            "outlet": ["FaceA","Edge2","Edge3","Edge6","Edge7","MasterNode2","MasterNode6","MasterNode7","MasterNode3"],
+            "inlet": ["FaceB","Edge1","Edge4","Edge5","Edge8","MasterNode1","MasterNode4","MasterNode8","MasterNode5"],
+            "front": ["FaceC","Edge3","Edge4","Edge10","Edge11","MasterNode4","MasterNode3","MasterNode7","MasterNode8"],
+            "back": ["FaceD","Edge1","Edge2","Edge9","Edge12","MasterNode1","MasterNode5","MasterNode6","MasterNode2"],
+            "top": ["FaceE","Edge7","Edge8","Edge11","Edge12","MasterNode5","MasterNode8","MasterNode7","MasterNode6"],
+            "bottom": ["FaceF","Edge5","Edge6","Edge9","Edge10","MasterNode1","MasterNode2","MasterNode3","MasterNode4"],
+        }
+
+        for k, v in texgen_to_openfoam.items():
+            self.faceZones[k] = np.array([], dtype="int32")
+            
+            for key in v:
+                self.faceZones[k] = np.hstack((self.faceZones[k], self.pointZones[key]))
+
 
     def checkFaceOrientations(self):
+        pass
+
+    def getFacesArea(self):
+        pass
+
+    def getCellsVolume(self):
         pass
