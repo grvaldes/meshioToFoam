@@ -161,23 +161,105 @@ def writeBoundaryFile(poly, filename):
 
 
 def writeSets(poly, filename):
-    pass
+    sets = []
+
+    for key in sorted(poly.cellZones.keys()):
+        if "All" in key:
+            continue
+
+        sets.append(key.split("_")[0])
+
+    sets = np.unique(sets)
+    
+    for set in sets:
+        nElems = 0
+        tElems = []
+
+        with open(filename + "/constant/polyMesh/sets/" + set,"w") as writer:
+            writer.write(writeBanner())
+            writer.write(writeFoamFile("cellSet","constant/polyMesh",set))
+            writer.write(writeBreak(1))
+            writer.write("\n\n")
+
+            for key, value in poly.cellZones.items():
+                if set in key:
+                    nElems += value.size
+                    tElems.append(value)
+
+            tElems = np.hstack(tuple(tElems))
+            writer.write(f"{nElems}\n(\n")
+
+            for line in tElems:
+                writer.write(f"{line}\n")
+
+            writer.write(")\n")
+            writer.write("\n\n")
+            writer.write(writeBreak(2))
 
 
 def writePointZones(poly, filename):
-    pass
+    with open(filename + "/constant/polyMesh/pointZones","w") as writer:
+        writer.write(writeBanner())
+        writer.write(writeFoamFile("regIOobject","constant/polyMesh","pointZones"))
+        writer.write(writeBreak(1))
+        writer.write("\n\n")
 
 
 def writeFaceZones(poly, filename):
-    pass
+    with open(filename + "/constant/polyMesh/faceZones","w") as writer:
+        writer.write(writeBanner())
+        writer.write(writeFoamFile("regIOobject","constant/polyMesh","faceZones"))
+        writer.write(writeBreak(1))
+        writer.write("\n\n")
 
 
 def writeCellZones(poly, filename):
-    pass
+    sets = []
+
+    for key in sorted(poly.cellZones.keys()):
+        if "All" in key:
+            continue
+
+        sets.append(key.split("_")[0])
+
+    sets = np.unique(sets)
+
+    with open(filename + "/constant/polyMesh/cellZones","w") as writer:
+        writer.write(writeBanner())
+        writer.write(writeFoamFile("regIOobject","constant/polyMesh","cellZones"))
+        writer.write(writeBreak(1))
+        writer.write("\n\n")
+
+        writer.write(f"{sets.size}\n(\n")
+
+        for set in sets:
+            nElems = 0
+            tElems = []
+
+            for key, value in poly.cellZones.items():
+                if set in key:
+                    nElems += value.size
+                    tElems.append(value)
+
+            tElems = np.hstack(tuple(tElems))
+
+            writer.write(set + "\n{\n")
+            writer.write("\ttype\t\tcellZone;\n".expandtabs(4))
+            writer.write("\tcellLabels\tList<label>\n".expandtabs(4))
+            writer.write(f"\t{nElems}\n\t(\n".expandtabs(4))
+            
+            for line in tElems:
+                writer.write(f"\t\t{line}\n".expandtabs(4))
+
+            writer.write("\t);\n}\n\n".expandtabs(4))
+
+        writer.write(")\n")
+        writer.write("\n\n")
+        writer.write(writeBreak(2))
 
 
 def createFoamFile(filename):
-    with open(filename + ".foam","w") as writer:
+    with open(filename + "/case.foam","w") as _:
         pass
 
 
