@@ -159,8 +159,8 @@ class polyMesh:
 
             shcount += 1
 
-        tot_cl = [0]
-        tot_in = [0]
+        tot_cl = 0
+        tot_in = 0
 
         for i in range(len(face_arr)):
             mask = np.zeros(shape=(face_ind[i].size), dtype="int32")
@@ -175,20 +175,21 @@ class polyMesh:
                     neigh[i][index] = face_ind[i][pair[0][1]]
 
             mask[ind] = cnt
-            bound[i] = node[np.nonzero(mask == 1)]                        # index of faces we will take as boundaries (no repeated)
-            inner[i] = node[np.nonzero(mask == 2)] + tot_in[i]            # index of faces we will take as inner (no repeated)
-            bowner[i] = owner[i][node[np.nonzero(mask == 1)]] + tot_cl[i]  # owner of inner faces
-            owner[i] = owner[i][node[np.nonzero(mask == 2)]] + tot_cl[i]  # owner of inner faces
-            neigh[i] = neigh[i][node[np.nonzero(mask == 2)]] + tot_cl[i]  # neighbour of each inner face
+            bound[i] = node[np.nonzero(mask == 1)]                     # index of faces we will take as boundaries (no repeated)
+            inner[i] = node[np.nonzero(mask == 2)] + tot_in            # index of faces we will take as inner (no repeated)
+            bowner[i] = owner[i][node[np.nonzero(mask == 1)]] + tot_cl # owner of inner faces
+            owner[i] = owner[i][node[np.nonzero(mask == 2)]] + tot_cl  # owner of inner faces
+            neigh[i] = neigh[i][node[np.nonzero(mask == 2)]] + tot_cl  # neighbour of each inner face
 
             self.innerFaces[face_arr[i].shape[1]] = face_arr[i][inner[i],:]
 
-            # TODO: maybe change for a simple sum
-            tot_cl.append(np.max(face_ind[i]) + 1)
-            tot_in.append(inner[i].size)
+            tot_cl += np.max(face_ind[i]) + 1
+            tot_in += inner[i].size
 
             for k in self.faceZones.keys():
-                bnd_grp[k + "_" + str(face_arr[i].shape[1])] = np.array([], dtype="int32")    
+                key = k + "_" + str(face_arr[i].shape[1])
+                bnd_grp[key] = np.array([], dtype="int32")  
+                self.boundary[key] = []  
 
             for j in range(bound[i].size):
                 nod = bound[i][j]
@@ -200,12 +201,10 @@ class polyMesh:
 
                     if check.size == curr_face.size:
                         bnd_grp[key] = np.hstack((bnd_grp[key], bowner[i][j]))
-
-            for k in self.faceZones.keys():
-                key = k + "_" + str(face_arr[i].shape[1])
-                self.boundary[key] = face_arr[i][bnd_grp[key],:]
+                        self.boundary[key].append(face_arr[i][nod,:])
 
         for k in sorted(self.boundary.keys()):
+            self.boundary[k] = np.vstack(tuple(self.boundary[k]))
             owner.append(bnd_grp[k])
 
         self.neighbour = np.hstack(tuple(neigh))

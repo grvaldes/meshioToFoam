@@ -1,1 +1,8 @@
-#!/usr/bin/python3
+from . import (
+    fileWriter,
+)
+
+
+__all__ = [
+    "fileWriter",
+]

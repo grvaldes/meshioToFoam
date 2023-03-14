@@ -1,9 +1,9 @@
 import sys
 
 import meshiofoam as meshio
-from openfoam.folderStructure import *
-from writers.fileWriter import *
-from openfoam.polyMesh import *
+import openfoam as of
+import writers as w
+
 
 # Reading arguments
 file_in = sys.argv[1]
@@ -13,20 +13,20 @@ file_out = sys.argv[2]
 mesh = meshio.read(file_in)
 
 # Adjusting mesh object according to mesh origin
-poly = polyMesh(mesh, file_in.split(".")[-1])
+poly = of.polyMesh(mesh, file_in.split(".")[-1])
 
 # Creating folder structure
-createFolderStructure(file_out)
+of.createFolderStructure(file_out)
 
 # Writing files
-writePointsFile(poly, file_out)
-writeCellsFile(poly, file_out)
-writeFacesFile(poly, file_out)
-writeOwnerFile(poly, file_out)
-writeNeighbourFile(poly, file_out)
-writeBoundaryFile(poly, file_out)
-writeSets(poly, file_out)
-# writePointZones(poly, file_out)
-# writeFaceZones(poly, file_out)
-writeCellZones(poly, file_out)
-createFoamFile(file_out)
+w.writePointsFile(poly, file_out)
+# writeCellsFile(poly, file_out)
+w.writeFacesFile(poly, file_out)
+w.writeOwnerFile(poly, file_out)
+w.writeNeighbourFile(poly, file_out)
+w.writeBoundaryFile(poly, file_out)
+w.writeSets(poly, file_out)
+# w.writePointZones(poly, file_out)
+# w.writeFaceZones(poly, file_out)
+w.writeCellZones(poly, file_out)
+w.createFoamFile(file_out)
